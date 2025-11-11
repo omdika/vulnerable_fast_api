@@ -6,45 +6,46 @@ from passlib.context import CryptContext
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def get_user_by_username(db: Session, username: str):
-    # VULNERABLE: SQL Injection through string concatenation
-    query = f"SELECT * FROM users WHERE username = '{username}'"
-    result = db.execute(text(query))
+    # Use parameterized query to prevent SQL injection
+    query = text("SELECT * FROM users WHERE username = :username")
+    result = db.execute(query, {"username": username})
     return result.first()
 
 def create_user(db: Session, username: str, password: str):
     hashed = pwd_context.hash(password)
     
-    # VULNERABLE: SQL Injection in INSERT statement
-    query = f"INSERT INTO users (username, hashed_password) VALUES ('{username}', '{hashed}')"
-    db.execute(text(query))
+    # Use parameterized INSERT to avoid injecting values into SQL text
+    query = text("INSERT INTO users (username, hashed_password) VALUES (:username, :hashed)")
+    db.execute(query, {"username": username, "hashed": hashed})
     db.commit()
     
-    # Get the created user (also vulnerable)
-    get_query = f"SELECT * FROM users WHERE username = '{username}'"
-    result = db.execute(text(get_query))
+    # Get the created user safely using a parameterized query
+    get_query = text("SELECT * FROM users WHERE username = :username")
+    result = db.execute(get_query, {"username": username})
     return result.first()
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
-# ADDITIONAL MORE VULNERABLE FUNCTIONS
+# ADDITIONAL MORE SAFE FUNCTIONS
 def search_users(db: Session, search_term: str):
-    # VULNERABLE: More dangerous because it allows multiple statements
-    query = f"SELECT * FROM users WHERE username LIKE '%{search_term}%' OR email LIKE '%{search_term}%'"
-    result = db.execute(text(query))
+    # Parameterize the LIKE pattern; include wildcards in the bound parameter
+    query = text("SELECT * FROM users WHERE username LIKE :term OR email LIKE :term")
+    term = f"%{search_term}%"
+    result = db.execute(query, {"term": term})
     return result.fetchall()
 
 def delete_user_by_username(db: Session, username: str):
-    # VULNERABLE: SQL Injection in DELETE statement
-    query = f"DELETE FROM users WHERE username = '{username}'"
-    db.execute(text(query))
+    # Parameterized DELETE to prevent SQL injection
+    query = text("DELETE FROM users WHERE username = :username")
+    db.execute(query, {"username": username})
     db.commit()
     return {"message": "User deleted"}
 
 def update_user_password(db: Session, username: str, new_password: str):
-    # VULNERABLE: SQL Injection in UPDATE statement
+    # Parameterized UPDATE
     hashed = pwd_context.hash(new_password)
-    query = f"UPDATE users SET hashed_password = '{hashed}' WHERE username = '{username}'"
-    db.execute(text(query))
+    query = text("UPDATE users SET hashed_password = :hashed WHERE username = :username")
+    db.execute(query, {"hashed": hashed, "username": username})
     db.commit()
     return {"message": "Password updated"}
